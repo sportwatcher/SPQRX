@@ -64,3 +64,5 @@ shapley_values <- eval.explain.shapr(model.heavy, x_testing, x_explain, y_testin
 ```
 
 This will end up generating the following extreme quantile regression plot giving one a good idea of the extreme tails. 
+
+![Extreme Quantile Regression Plot](image.png)
