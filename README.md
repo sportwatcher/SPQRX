@@ -61,5 +61,4 @@ y_explain <- y_testing[1:2, ]
 
 shapley_values <- eval.explain.shapr(model.heavy, x_testing, x_explain, y_testing, y_explain,
                                      type = 'QF', tau = 0.99)
-
-```{r}
+```
