@@ -7,7 +7,6 @@ Description: Semi-parametric quantile regression for extreme quantile levels usi
 License: MIT
 Encoding: UTF-8
 LazyData: true
-
 Imports:
     stats,
     utils,
@@ -19,12 +18,9 @@ Imports:
     reticulate,
     tensorflow,
     keras3
-
 LinkingTo:
     Rcpp,
     RcppArmadillo
-
 SystemRequirements:
     C++11, BLAS, LAPACK, Python (>=3.8), TensorFlow
-
 RoxygenNote: 7.3.3

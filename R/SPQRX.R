@@ -287,30 +287,11 @@ in.fit.spqrx <- function(input_dim, hidden_dim, n.knots,knots, x_training, x_val
 }
 
 
-predict.spqr <- function(model, x, y = NULL, type = 'QF', tau = 0.5, normalize_input = FALSE,
-                      normalize_output = TRUE)
-{
-  tf <- get("tf", envir = asNamespace("SPQRX"))
-  if(!normalize_input) {
-    y_max <- model$normalizer$y_max
-    y_min <- model$normalizer$y_min
-    m.x <- model$normalizer$x_mean
-    s.x <- model$normalizer$x_std
-
-    if (!is.null(y)) y <- (y - y_min) / (y_max - y_min)
-
-    x <- scale(x, m.x, s.x)
-
-
-  }
-
-}
-
-
-
 #' @export
-predict.spqrx <- function(model, x, y = NULL , type = 'QF', tau = 0.5, normalize_input = FALSE, normalize_output = TRUE)
+predict_spqrx<- function(object, x, y = NULL , type = 'QF', tau = 0.5, normalize_input = FALSE, normalize_output = TRUE)
 {
+
+  model <- object
   tf <- get("tf", envir = asNamespace("SPQRX"))
   if(!normalize_input) {
 
@@ -436,14 +417,14 @@ eval.explain.ALE<- function(model,
 
   if (is.null(M_basis)) {
 
-    y.hat1 <- predict.spqrx(
+    y.hat1 <- predict_spqrx(
       model = model,
       X = X1,
       type = 'QF',
       tau = tau
     )
 
-    y.hat2 <- predict.spqrx(
+    y.hat2 <- predict_spqrx(
       model = model,
       X = X2,
       type = 'QF',
@@ -481,13 +462,13 @@ eval.explain.shapr <- function(model , x_training, x_explain, y_training, y_expl
   .shap.predict <- function(object, newdata, ...) {
 
     if (type == 'QF') {
-      returnBack <- predict.spqrx(object, newdata, NULL, type = 'QF', tau = tau)
+      returnBack <- predict_spqrx(object, newdata, NULL, type = 'QF', tau = tau)
       return  (returnBack)
     } else if (type == 'CDF') {
-      returnBack <- predict.spqrx(object, newdata, y_explain, type = 'CDF')
+      returnBack <- predict_spqrx(object, newdata, y_explain, type = 'CDF')
       return (returnBack)
     } else if (type == 'PDF') {
-      returnBack <- predict.spqrx(object, newdata, y_explain, type = 'PDF')
+      returnBack <- predict_spqrx(object, newdata, y_explain, type = 'PDF')
       return (returnBack)
     }
 
@@ -496,13 +477,12 @@ eval.explain.shapr <- function(model , x_training, x_explain, y_training, y_expl
 
   if(type == 'QF'){
 
-    print("Here")
-    quantile_mean <- predict.spqrx(model, x = x_training, type = 'QF', tau = tau)
-    print(quantile_mean)
+
+    quantile_mean <- predict_spqrx(model, x = x_training, type = 'QF', tau = tau)
     quantile_mean <- mean(quantile_mean)
 
 
-    shapley_explantion <- explain(
+    shapley_explantion <- shapr::explain(
       model = model,
       x_train = x_training,
       x_explain = x_explain,
@@ -513,6 +493,21 @@ eval.explain.shapr <- function(model , x_training, x_explain, y_training, y_expl
 
     return (shapley_explantion)
 
+  }else if (type == 'CDF') {
+
+    cdf_values <- predict.spqrx(model, x_training, y_training, type = 'CDF')
+    mean_cdf <- mean(cdf_values)
+
+    shapley_values <- shapr::explain(
+        model = model,
+        x_train = x_training,
+        x_explain = x_explain,
+        approach = "empirical",
+        phi0 = mean_cdf,
+        predict_model = .shap.predict,
+      )
+
+    return (shapley_values)
   }
 
 
@@ -526,7 +521,7 @@ eval.explain.shapr <- function(model , x_training, x_explain, y_training, y_expl
 #' @export
 eval.plot.qexp <- function(model, x, y, pre_normalize = FALSE) {
   tf <- get("tf", envir = asNamespace("SPQRX"))
-  cdf_values <- predict.spqrx(model, x, y, type = 'CDF')
+  cdf_values <- predict_spqrx(model, x, y, type = 'CDF')
 
   y_max <- model$normalizer$y_max
   y_min <- model$normalizer$y_min
