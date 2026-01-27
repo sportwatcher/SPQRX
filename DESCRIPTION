@@ -1,20 +1,30 @@
 Package: SPQRX
 Type: Package
-Title: SPQRX Quantile Regression Neural Network
+Title: SPQRX: Semi-Parametric Quantile Regression Neural Networks
 Version: 0.1.0
-Maintainer: Dalton YourLastName <dalton@example.com>
 Authors@R: person("Dalton", "YourLastName", email = "dalton@example.com", role = c("aut", "cre"))
-Description: Package for semi-parametric quantile regression using neural networks, for extreme quantiles levels. 
+Description: Semi-parametric quantile regression for extreme quantile levels using neural network models.
 License: MIT
 Encoding: UTF-8
 LazyData: true
-Imports: 
-    tensorflow,
+
+Imports:
     stats,
     utils,
-    keras3,
-    reticulate,
     evd,
-    shapr, 
-    splines2
+    splines2,
+    shapr,
+    Rcpp,
+    RcppArmadillo,
+    reticulate,
+    tensorflow,
+    keras3
+
+LinkingTo:
+    Rcpp,
+    RcppArmadillo
+
+SystemRequirements:
+    C++11, BLAS, LAPACK, Python (>=3.8), TensorFlow
+
 RoxygenNote: 7.3.3
