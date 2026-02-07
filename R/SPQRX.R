@@ -467,7 +467,6 @@ predict_spqrx<- function(object, x, y = NULL , type = 'QF', tau = 0.5, normalize
 
   # SPQR section of the code
   if (object$spqrx == FALSE) {
-    print("Here")
     knots <- model$knots
 
     y_max <- model$normalizer$y_max
