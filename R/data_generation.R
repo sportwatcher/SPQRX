@@ -13,6 +13,9 @@ scales.func = function(X){
 
 
 
+#generate.simulation.dataset.dependent.covariates <-
+
+
 
 #' @export
 generate.simulation.dataset <- function(n = 1000, n.knots = 25)

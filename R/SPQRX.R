@@ -9,14 +9,25 @@ xi_custom_activation <- function(x) {
 
 
 #' @export
-create.package.model <- function(model, n.knots, knots , p_a , p_b, c1, c2, normalizer = NULL)
+create.package.model <- function(model, n.knots, knots , p_a , p_b, c1, c2, normalizer = NULL,
+                                 variable_names = NULL)
 {
-  return (list(model = model, n.knots = n.knots , knots = knots, p_a = p_a , p_b = p_b , c1 = c1 , c2 = c2, normalizer = normalizer))
+  return ( structure(
+    list(model = model, n.knots = n.knots , knots = knots, p_a = p_a , p_b = p_b , c1 = c1 , c2 = c2, normalizer = normalizer
+         , variable_names = variable_names),
+    class = "spqrx_model"
+  ))
 }
 
+#' @export
 create.package.normalize.list <- function(x_std, x_mean, y_max, y_min)
 {
   return (list(x_std = x_std, x_mean = x_mean, y_max = y_max, y_min = y_min))
+}
+
+#' @export
+create.packages.hyperparameter <- function(p_a, p_b , c1 = 25, c2 = 5, batch_size = 500) {
+  return (list(p_a = p_a, p_b = p_b, c1 = c1, c2 = c2, batch_size = batch_size))
 }
 
 #' @export
@@ -143,8 +154,25 @@ SPQRX <- function(input_dim, hidden_dim, k) {
 
 #' @export
 fit.spqrx <- function(input_dim, hidden_dim, n.knots, x_training, x_validation, y_training, y_validation,
-                      y.seq,p_a, p_b, c1 = 25 , c2 = 5, package.it = TRUE, pre_normalize = FALSE)
+                      y.seq,hyperparameter = NULL, package.it = TRUE, pre_normalize = FALSE)
 {
+
+
+  if (!is.null(hyperparameter)) {
+
+    p_a <- hyperparameter$p_a
+    p_b <- hyperparameter$p_b
+    c1 <- hyperparameter$c1
+    c2 <- hyperparameter$c2
+
+
+  }
+
+
+
+
+
+
 
   tf <- get("tf", envir = asNamespace("SPQRX"))
   y_max <- max(max(y_training), max(y_validation))
@@ -195,10 +223,16 @@ fit.spqrx <- function(input_dim, hidden_dim, n.knots, x_training, x_validation, 
                               i_basis_training = i_basis_training, i_basis_validation = i_basis_validation,
                               m_basis_training = m_basis_training, m_basis_validation = m_basis_validation,
                               y.seq = y.seq, F.basis.seq = F.basis.seq, f.basis.seq = f.basis.seq,p_a = p_a, p_b = p_b ,c1 = c1 , c2 = c2 )
+
+  variable_names <- NULL
+  if (!is.null(colnames(x_training))) {
+    variable_names <- colnames(x_training)
+  }
+
   if (package.it) {
     if (!pre_normalize) {
       return (create.package.model(model = model.heavy, n.knots = n.knots, knots = knots,
-                                   p_a = p_a, p_b = p_b,c1 = c1 , c2 = c2, normalizer = normalizer))
+                                   p_a = p_a, p_b = p_b,c1 = c1 , c2 = c2, normalizer = normalizer, variable_names = variable_names))
     }
     return (create.package.model(model = model.heavy, n.knots = n.knots, knots = knots , p_a = p_a, p_b = p_b, c1 = c1, c2 = c2))
   }else {
@@ -287,7 +321,7 @@ in.fit.spqrx <- function(input_dim, hidden_dim, n.knots,knots, x_training, x_val
 }
 
 
-#' @export
+
 predict_spqrx<- function(object, x, y = NULL , type = 'QF', tau = 0.5, normalize_input = FALSE, normalize_output = TRUE)
 {
 
@@ -302,9 +336,9 @@ predict_spqrx<- function(object, x, y = NULL , type = 'QF', tau = 0.5, normalize
 
     if (!is.null(y)) y <- (y - y_min) / (y_max - y_min)
 
-    x <- scale(x, m.x, s.x)
+      x <- scale(x, m.x, s.x)
 
-  }
+    }
 
 
 
@@ -346,19 +380,58 @@ predict_spqrx<- function(object, x, y = NULL , type = 'QF', tau = 0.5, normalize
   }else if(type == 'QF'){
 
     # Basis for quantile is not useful or used.
-    i_basis <- matrix(0 , nrow = dim(x)[1], ncol = n.knots)
-    m_basis <- matrix(0 , nrow = dim(x)[1], ncol = n.knots)
 
 
-    returnBack <- predict.spqrk.GPD(model = model.heavy, type = type, Y=NULL, knots = knots, I_basis = i_basis,
-                                    M_basis = m_basis, covariates = x, p_a = p_a, p_b = p_b,  c1 = c1, c2 = c2, tau = tau)
+    if (is.vector(tau) && is.atomic(tau)) {
 
-    if (normalize_output) {
-      returnBack <- (returnBack * (y_max - y_min)) + y_min
-      return (returnBack)
-    }else{
-      return (returnBack)
+
+      i_basis <- matrix(0 , nrow = dim(x)[1], ncol = n.knots)
+      m_basis <- matrix(0 , nrow = dim(x)[1], ncol = n.knots)
+      returnBack = NULL
+      for (index in 1:length(tau)) {
+
+
+
+        temp_returnBack <- predict.spqrk.GPD(model = model.heavy, type = type, Y=NULL, knots = knots, I_basis = i_basis,
+                                        M_basis = m_basis, covariates = x, p_a = p_a, p_b = p_b,  c1 = c1, c2 = c2, tau = tau[index])
+
+        if(is.null(returnBack)) {
+
+          returnBack <- temp_returnBack
+        }else {
+          returnBack <- cbind(returnBack, temp_returnBack)
+        }
+
+      }
+
+      colnames(returnBack) <- paste0((tau * 100) ," %")
+      if (normalize_output) {
+        returnBack <- (returnBack * (y_max - y_min)) + y_min
+        return (returnBack)
+      }else{
+        return (returnBack)
+      }
+    }else {
+
+      i_basis <- matrix(0 , nrow = dim(x)[1], ncol = n.knots)
+      m_basis <- matrix(0 , nrow = dim(x)[1], ncol = n.knots)
+
+
+      returnBack <- predict.spqrk.GPD(model = model.heavy, type = type, Y=NULL, knots = knots, I_basis = i_basis,
+                                      M_basis = m_basis, covariates = x, p_a = p_a, p_b = p_b,  c1 = c1, c2 = c2, tau = tau)
+
+      if (normalize_output) {
+        returnBack <- (returnBack * (y_max - y_min)) + y_min
+        return (returnBack)
+      }else{
+        return (returnBack)
+      }
+
+
     }
+
+
+
   }
 
 
@@ -370,22 +443,23 @@ predict_spqrx<- function(object, x, y = NULL , type = 'QF', tau = 0.5, normalize
 
 
 
-#' @export
+
+
 eval.explain.ALE<- function(model,
-                                   covariates,
-                                   tau = seq(0.1, 0.9, 0.1),
-                                   I_basis = NULL,
-                                   M_basis = NULL,
+                                   x,
+                                   tau = 0.5,
                                    k = NULL,
                                    knots = NULL,
                                    var.index = c(1))
 {
   tf <- get("tf", envir = asNamespace("SPQRX"))
-  X <- covariates
+  X <- x
   N <- nrow(X)
   d <- ncol(X)
   J <- var.index
   ntau <- length(tau)
+  knots <- model$knots
+  k <- (length(knots) + 3)
 
 
   firstcheck <- class(X[, J[1]]) == "numeric" ||
@@ -415,23 +489,24 @@ eval.explain.ALE<- function(model,
 
 
 
-  if (is.null(M_basis)) {
 
-    y.hat1 <- predict_spqrx(
-      model = model,
-      X = X1,
-      type = 'QF',
-      tau = tau
-    )
+  y.hat1 <- predict_spqrx(
+    object = model,
+    x = X1,
+    type = 'QF',
+    tau = tau,
+    normalize_output = FALSE
+  )
 
-    y.hat2 <- predict_spqrx(
-      model = model,
-      X = X2,
-      type = 'QF',
-      tau = tau
-    )
+  y.hat2 <- predict_spqrx(
+    object = model,
+    x = X2,
+    type = 'QF',
+    tau = tau,
+    normalize_output = FALSE
+  )
 
-  }
+
 
   Delta <- y.hat2 - y.hat1
   if (is.null(dim(Delta)))
@@ -451,13 +526,66 @@ eval.explain.ALE<- function(model,
 
 }
 
+
+
+
+
 #' @export
-eval.explain.shapr <- function(model , x_training, x_explain, y_training, y_explain, type = 'QF', tau = 0.5)
+eval.explain.VI <- function(model, x, tau = seq(0.1, 0.9, 0.1),var.indexs = c(1, 2))
+{
+
+  varmatrix <- NULL
+
+  for (var.index in var.indexs)  {
+
+    result <- eval.explain.QALE(model, x, tau = tau, var.index = var.index)
+
+
+    x_vals <- result$x
+    f3 <- result$ALE
+
+    variable.importance <- apply(f3, 2 , sd)
+
+
+
+    if (is.null(varmatrix))
+    {
+      varmatrix <- variable.importance
+    }else {
+      varmatrix <- rbind(varmatrix, variable.importance)
+    }
+
+
+  }
+
+  if (is.vector(varmatrix)) {
+    varmatrix <- matrix(varmatrix, nrow = 1)
+  }
+
+  var.names <- paste0("variable_", var.indexs)
+  rownames(varmatrix) <- var.names
+  return (varmatrix)
+
+}
+
+
+
+
+
+
+
+
+#' @export
+eval.explain.shapr <- function(model , x_training, x_explain, y_training, y_explain, type = 'QF', tau = 0.5,
+                               variable_names = NULL)
 {
   tf <- get("tf", envir = asNamespace("SPQRX"))
-  colnames(x_training) <- paste0("variable_", 1:ncol(x_training))
-  colnames(x_explain) <- paste0("variable_", 1:ncol(x_explain))
 
+  if (is.null(variable_names)) {
+    # The shapr library requires variable names for training
+    colnames(x_training) <- paste0("variable_", 1:ncol(x_training))
+    colnames(x_explain) <- paste0("variable_", 1:ncol(x_explain))
+  }
 
   .shap.predict <- function(object, newdata, ...) {
 
@@ -519,6 +647,283 @@ eval.explain.shapr <- function(model , x_training, x_explain, y_training, y_expl
 }
 
 #' @export
+eval.explain.QALE <- function(model,
+                                   x,
+                                   tau = seq(0.1, 0.9, 0.1),
+                                   var.index = c(1))
+{
+
+
+  X <- x
+  N <- nrow(X)
+  d <- ncol(X)
+  J <- var.index
+  ntau <- length(tau)
+
+  knots <- model$knots
+  k <- length(knots) + 3
+
+
+  firstcheck <- class(X[, J[1]]) == "numeric" ||
+    class(X[, J[1]]) == "integer"
+
+  if (!firstcheck)
+    stop("X[,var.index] must be numeric or integer")
+
+
+  z <- c(min(X[,J]), as.numeric(quantile(X[,J],seq(1/k,1,length.out=k), type=1)))
+
+  z <- unique(z)
+
+  k <- length(z) - 1
+  f3 <- numeric(k)
+
+
+  #a1 <- as.numeric(cut(X[, J], breaks = z, include.lowest = TRUE))
+
+  a1 <- as.numeric(cut(X[, J], breaks = z, include.lowest = TRUE, labels = 1:k))
+
+
+  X1 <- X
+  X2 <- X
+  X1[, J] <- z[a1]
+  X2[, J] <- z[a1 + 1]
+
+
+
+
+
+  y.hat1 <- predict_spqrx(
+    object = model,
+    x = X1,
+    type = 'QF',
+    tau = tau,
+    normalize_output = FALSE
+  )
+
+  y.hat2 <- predict_spqrx(
+    object = model,
+    x = X2,
+    type = 'QF',
+    tau = tau,
+    normalize_output = FALSE
+  )
+
+
+
+  Delta <- y.hat2 - y.hat1
+  if (is.null(dim(Delta)))
+    dim(Delta) <- c(N, 1)
+
+
+  DDelta <- matrix(0, nrow = k, ncol = ntau)
+
+  for (i in 1:ntau) {
+
+    DDelta[,i] <- as.numeric(tapply(Delta[,i], a1, mean)) #K-length vector of averaged local effect values
+  }
+
+  f3 <- rbind(0, apply(DDelta, 2 , cumsum))
+
+  return(list(x = z, ALE = f3))
+
+}
+
+
+
+model_type.spqrx_model <- function(x, ...) {
+  "regression"
+}
+
+predict_model.spqrx_model <- function(object, newdata, ...) {
+
+  newdata <- as.data.frame(newdata)
+  newdata <- as.matrix(newdata)
+
+  preds <- predict_spqrx(
+    object = object,
+    x = newdata,
+    type = "QF",
+    tau = 0.5,
+    normalize_input = FALSE
+  )
+
+  data.frame(Response = as.numeric(preds))
+}
+
+#' @export
+eval.explain.lime <- function(model,
+                              x_training,
+                              x_explain,
+                              tau = 0.5,
+                              n_features = 5,
+                              n_permutations = 5000)
+{
+  if (!requireNamespace("lime", quietly = TRUE)) {
+    stop("Package 'lime' is required.")
+  }
+
+
+  x_training_norm <- scale(
+    x_training,
+    center = model$normalizer$x_mean,
+    scale  = model$normalizer$x_std
+  )
+
+  x_explain_norm <- scale(
+    x_explain,
+    center = model$normalizer$x_mean,
+    scale  = model$normalizer$x_std
+  )
+
+  x_training_norm <- as.data.frame(x_training_norm)
+  x_explain_norm  <- as.data.frame(x_explain_norm)
+
+
+  if(!is.null(model$variable_names)) {
+    colnames(x_training_norm) <- model$variable_names
+    colnames(x_explain_norm)  <- colnames(x_training_norm)
+  }else {
+    colnames(x_training_norm) <- paste0("V", seq_len(ncol(x_training_norm)))
+    colnames(x_explain_norm)  <- colnames(x_training_norm)
+  }
+
+  predict_model.spqrx_model <- function(object, newdata, ...) {
+
+    preds <- predict_spqrx(
+      object = object,
+      x = as.matrix(newdata),
+      type = "QF",
+      tau = tau,
+      normalize_input = TRUE
+    )
+
+    data.frame(Response = as.numeric(preds))
+  }
+
+  explainer <- lime::lime(
+    x = x_training_norm,
+    model = model
+  )
+
+  explanation <- lime::explain(
+    x_explain_norm,
+    explainer,
+    n_features = n_features,
+    n_permutations = n_permutations
+  )
+
+  return(explanation)
+}
+
+
+
+
+
+
+
+#' @export
+eval.plot.QVI <- function(model, x, var.indexs, lower_quantile = 0.1, upper_quantile = 0.9,
+                          quantile_increment = 0.1)
+
+{
+
+  ALE_variable_estimates <- eval.explain.VI(model.heavy, x_testing,tau = seq(0.1, 0.9, 0.1), var.indexs = var.indexs)
+
+  colnames(ALE_variable_estimates) <- paste((seq(0.1, 0.9, 0.1) * 100) , " %")
+
+  x_vals <- 1:ncol(ALE_variable_estimates)
+  matplot(
+    x_vals,
+    t(ALE_variable_estimates),    # transpose so each row becomes a line
+    type = "l",
+    lty = 1,
+    lwd = 2,
+    col = rainbow(nrow(ALE_variable_estimates)),
+    xlab = "Covariate value",
+    ylab = "Value",
+    main = "Variable Effects",
+    xaxt = "n"   # remove default axis
+  )
+
+  axis(
+    1,
+    at = 1:9,
+    labels = paste0(seq(10, 90, 10), " %")
+  )
+  legend(
+    "topleft",
+    legend = rownames(ALE_variable_estimates),
+    col = rainbow(nrow(ALE_variable_estimates) ),
+    lty = 1,
+    lwd = 2,
+    cex = 0.8
+  )
+
+
+}
+
+
+
+
+
+
+#' @export
+eval.plot.lime <- function(model, x_training, x_explain, tau = 0.5)
+{
+
+  if(is.vector(x_explain)) {
+    x_explain <- matrix(x_explain, nrow = 1)
+  }
+
+
+  lime_result <- eval.explain.lime(model, x_training, x_explain, tau = tau, n_features = ncol(x_training))
+
+
+
+  lime_result <- dplyr::ungroup(
+    dplyr::mutate(
+      dplyr::group_by(lime_result, feature),
+      mean_abs_weight = mean(abs(feature_weight))
+    )
+  )
+
+
+
+  # Reorder features by mean absolute weight
+  lime_result$feature <- reorder(
+    lime_result$feature,
+    lime_result$mean_abs_weight
+  )
+
+
+
+  # Plot
+  ggplot2::ggplot(lime_result,
+                  ggplot2::aes(
+                    x = feature_weight,
+                    y = feature,
+                    color = as.numeric(feature_value)
+                  )) +
+    ggplot2::geom_jitter(
+      height = 0.2,
+      alpha = 0.6,
+      size = 1.5
+    ) +
+    ggplot2::scale_color_viridis_c(option = "plasma") +
+    ggplot2::labs(
+      x = "LIME Contribution",
+      y = "Feature",
+      color = "Feature Value",
+      title = "LIME Summary Plot"
+    ) +
+    ggplot2::theme_minimal()
+
+
+}
+
+
+#' @export
 eval.plot.qexp <- function(model, x, y, pre_normalize = FALSE) {
   tf <- get("tf", envir = asNamespace("SPQRX"))
   cdf_values <- predict_spqrx(model, x, y, type = 'CDF')
@@ -539,6 +944,9 @@ eval.plot.qexp <- function(model, x, y, pre_normalize = FALSE) {
 
 
 }
+
+
+
 
 
 

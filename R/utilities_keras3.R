@@ -448,7 +448,7 @@ nloglik_loss = function(F.basis.seq,f.basis.seq=NULL, y.seq,p_a=0.5,p_b=0.975,c1
       # Testing Block
 
 
-      spqr_loss <- -keras3::op_average((log.f.blend))
+      spqr_loss <- -keras3::op_sum((log.f.blend))
       return(spqr_loss)
 
     }
@@ -589,7 +589,7 @@ nloglik_loss = function(F.basis.seq,f.basis.seq=NULL, y.seq,p_a=0.5,p_b=0.975,c1
       PENALTY = lambda* keras3::op_sum(op_relu(-f.blend_seq))
 
 
-      spqr_loss <- -keras3::op_average((log.f.blend))
+      spqr_loss <- -keras3::op_sum((log.f.blend))
       return(spqr_loss+PENALTY)
 
     }
