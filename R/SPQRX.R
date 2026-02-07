@@ -9,12 +9,11 @@ xi_custom_activation <- function(x) {
 
 
 #' @export
-create.package.model <- function(model, n.knots, knots , p_a , p_b, c1, c2, normalizer = NULL,
-                                 variable_names = NULL)
+create.package.model <- function(model, n.knots, knots , p_a = NULL, p_b = NULL, c1 = NULL, c2 = NULL, normalizer = NULL,
+                                 variable_names = NULL, spqrx = TRUE)
 {
   return ( structure(
-    list(model = model, n.knots = n.knots , knots = knots, p_a = p_a , p_b = p_b , c1 = c1 , c2 = c2, normalizer = normalizer
-         , variable_names = variable_names),
+    list(model = model, n.knots = n.knots , knots = knots, p_a = p_a , p_b = p_b , c1 = c1 , c2 = c2, normalizer = normalizer, variable_names = variable_names, spqrx = spqrx),
     class = "spqrx_model"
   ))
 }
@@ -150,11 +149,132 @@ SPQRX <- function(input_dim, hidden_dim, k) {
 }
 
 
+#' @export
+in.fit.spqr <- function(input_dim, hidden_dim, n.knots,knots, x_training, x_validation, y_training, y_validation,
+                        m_basis_training, m_basis_validation, i_basis_training, i_basis_validation)
+{
+
+
+  tf <- get("tf", envir = asNamespace("SPQRX"))
+
+  model <- SPQRX(input_dim, hidden_dim, n.knots)
+
+
+  model |> keras3::compile(
+    loss = nloglik_loss_SPQR,
+    optimizer = keras3::optimizer_adam(learning_rate = 0.001)
+  )
+
+  c1 <- max(c1, 25)
+  checkpoint <- keras3::callback_model_checkpoint(filepath=paste0('runs/','model','/spqr_initial.weights.h5'), monitor = "val_loss", verbose = 0,
+                                                  save_best_only = TRUE, save_weights_only = TRUE, mode = "min",
+                                                  save_freq = "epoch")
+
+
+
+
+  history <- model |> keras3::fit(
+    list(covariates = x_training, data = y_training, I_basis = i_basis_training),
+    m_basis_training,
+    epochs = 200,
+    batch_size = 32,
+    callbacks=list(checkpoint,keras3::callback_early_stopping(monitor = "val_loss",
+                                                              min_delta = 0, patience = 5)),
+    validation_data=list(
+      list(covariates = x_validation, data = y_validation, I_basis = i_basis_validation),
+      m_basis_validation)
+  )
+
+
+  #
+  return (model)
+
+}
+
+
+
+#' @export
+fit.spqr <- function(input_dim, hidden_dim, n.knots, x_training, x_validation, y_training, y_validation,pre_normalize = FALSE, package.it = TRUE)
+{
+
+
+
+
+
+
+
+
+
+
+  tf <- get("tf", envir = asNamespace("SPQRX"))
+  y_max <- max(max(y_training), max(y_validation))
+  y_min <- min(min(y_training), min(y_validation))
+
+  y_training <- (y_training - y_min) /(y_max - y_min)
+  y_validation <- (y_validation - y_min) / (y_max - y_min)
+
+
+  x_combined <- rbind(x_training, x_validation)
+  m.x <- apply(x_combined, 2, mean)
+  s.x <- apply(x_combined, 2, sd)
+
+  x_training <- scale(x_training, center = m.x, scale = s.x)
+  x_validation <- scale(x_validation, center = m.x, scale = s.x)
+
+
+  nas_sum <- sum ( is.na(x_training) )  + sum ( is.na(x_validation) ) + sum ( is.na(y_training) ) + sum(  is.na(y_validation) )
+
+  normalizer <- create.package.normalize.list(s.x, m.x, y_max = y_max, y_min = y_min)
+
+
+
+
+  probs <- seq(0, 1, length.out = n.knots)[-c(1, n.knots)]
+  knots = quantile(rbind(y_training, y_validation),probs=seq(1/(n.knots-2), 1-1/(n.knots-2), length=n.knots-3))
+
+
+  i_basis_training <- t(basis(y_training, n.knots,knots, integral = TRUE))
+  i_basis_validation <- t(basis(y_validation, n.knots,knots, integral = TRUE))
+
+  m_basis_training <- t(basis(y_training, n.knots, knots))
+  m_basis_validation <- t(basis(y_validation, n.knots, knots))
+
+
+
+
+
+  model <- in.fit.spqr(input_dim , hidden_dim , n.knots = n.knots , knots = knots, x_training = x_training,
+                              x_validation = x_validation, y_training = y_training, y_validation = y_validation,
+                              i_basis_training = i_basis_training, i_basis_validation = i_basis_validation,
+                              m_basis_training = m_basis_training, m_basis_validation = m_basis_validation)
+
+  variable_names <- NULL
+  if (!is.null(colnames(x_training))) {
+    variable_names <- colnames(x_training)
+  }
+
+  if (package.it) {
+    if (!pre_normalize) {
+      return (create.package.model(model = model, n.knots = n.knots, knots = knots,
+                                   normalizer = normalizer, variable_names = variable_names, spqrx = FALSE))
+    }
+    return (create.package.model(model = model, n.knots = n.knots, knots = knots,
+                                 normalizer = normalizer, variable_names = variable_names, spqrx = FALSE))
+  }else {
+    return (model)
+  }
+
+}
+
+
+
+
 
 
 #' @export
 fit.spqrx <- function(input_dim, hidden_dim, n.knots, x_training, x_validation, y_training, y_validation,
-                      y.seq,hyperparameter = NULL, package.it = TRUE, pre_normalize = FALSE)
+                      y.seq,hyperparameter = NULL, package.it = TRUE, pre_normalize = FALSE,
+                      spqr_only = TRUE )
 {
 
 
@@ -234,12 +354,17 @@ fit.spqrx <- function(input_dim, hidden_dim, n.knots, x_training, x_validation, 
       return (create.package.model(model = model.heavy, n.knots = n.knots, knots = knots,
                                    p_a = p_a, p_b = p_b,c1 = c1 , c2 = c2, normalizer = normalizer, variable_names = variable_names))
     }
-    return (create.package.model(model = model.heavy, n.knots = n.knots, knots = knots , p_a = p_a, p_b = p_b, c1 = c1, c2 = c2))
+    return (create.package.model(model = model.heavy, n.knots = n.knots, knots = knots, p_a = p_a, p_b = p_b , c1 = c1 , c2 = c2 , normalizer = normalizer,
+                                 spqrx = TRUE))
   }else {
     return (model.heavy)
   }
 
 }
+
+
+
+
 
 #' @export
 in.fit.spqrx <- function(input_dim, hidden_dim, n.knots,knots, x_training, x_validation, y_training, y_validation,
@@ -321,7 +446,7 @@ in.fit.spqrx <- function(input_dim, hidden_dim, n.knots,knots, x_training, x_val
 }
 
 
-
+#' @export
 predict_spqrx<- function(object, x, y = NULL , type = 'QF', tau = 0.5, normalize_input = FALSE, normalize_output = TRUE)
 {
 
@@ -340,7 +465,95 @@ predict_spqrx<- function(object, x, y = NULL , type = 'QF', tau = 0.5, normalize
 
     }
 
+  # SPQR section of the code
+  if (object$spqrx == FALSE) {
+    print("Here")
+    knots <- model$knots
 
+    y_max <- model$normalizer$y_max
+    y_min <- model$normalizer$y_min
+    n.knots <- (length(knots) + 3)
+    model <- model$model
+
+
+    if (type == 'CDF') {
+
+      i_basis <- t(basis(y, n.knots, knots , integral = TRUE))
+      m_basis <- t(basis(y, n.knots, knots , integral = FALSE))
+
+
+
+
+      returnBack <- predict.spqrk(model = model, type = type, Y = y, knots = knots,
+                                      I_basis = i_basis, covariates = x)
+
+      }else if(type == 'PDF') {
+
+
+        i_basis <- t(basis(y, n.knots, knots , integral = TRUE))
+        m_basis <- t(basis(y, n.knots, knots , integral = FALSE))
+
+
+        returnBack <- predict.spqrk(model = model, type = type, Y=y, knots = knots,I_basis = i_basis, covariates = x)
+
+        return (returnBack)
+
+      }else if(type == 'QF'){
+
+        # Basis for quantile is not useful or used.
+
+
+        if (is.vector(tau) && is.atomic(tau)) {
+
+
+          i_basis <- matrix(0 , nrow = dim(x)[1], ncol = n.knots)
+          m_basis <- matrix(0 , nrow = dim(x)[1], ncol = n.knots)
+          returnBack = NULL
+          for (index in 1:length(tau)) {
+
+
+
+            temp_returnBack <- predict.spqrk(model = model, type = type, Y=NULL, knots = knots, I_basis = i_basis, covariates = x, tau = tau[index])
+
+            if(is.null(returnBack)) {
+
+              returnBack <- temp_returnBack
+            }else {
+              returnBack <- cbind(returnBack, temp_returnBack)
+            }
+
+          }
+
+          colnames(returnBack) <- paste0((tau * 100) ," %")
+          if (normalize_output) {
+            returnBack <- (returnBack * (y_max - y_min)) + y_min
+            return (returnBack)
+          }else{
+            return (returnBack)
+          }
+        }else {
+
+          i_basis <- matrix(0 , nrow = dim(x)[1], ncol = n.knots)
+          m_basis <- matrix(0 , nrow = dim(x)[1], ncol = n.knots)
+
+
+          returnBack <- predict.spqrk(model = model, type = type, Y=NULL, knots = knots, I_basis = i_basis, covariates = x, tau = tau)
+
+          if (normalize_output) {
+            returnBack <- (returnBack * (y_max - y_min)) + y_min
+            return (returnBack)
+          }else{
+            return (returnBack)
+          }
+
+
+        }
+
+
+
+      }
+
+    }
 
   model.heavy <- model$model
   p_a <- model$p_a
@@ -730,11 +943,14 @@ eval.explain.QALE <- function(model,
 }
 
 
-
+#' @export
+#' @importFrom lime model_type predict_model
 model_type.spqrx_model <- function(x, ...) {
   "regression"
 }
 
+#' @export
+#' @importFrom lime model_type predict_model
 predict_model.spqrx_model <- function(object, newdata, ...) {
 
   newdata <- as.data.frame(newdata)
@@ -916,8 +1132,7 @@ eval.plot.lime <- function(model, x_training, x_explain, tau = 0.5)
       y = "Feature",
       color = "Feature Value",
       title = "LIME Summary Plot"
-    ) +
-    ggplot2::theme_minimal()
+    ) + ggplot2::theme_minimal()
 
 
 }
@@ -943,6 +1158,56 @@ eval.plot.qexp <- function(model, x, y, pre_normalize = FALSE) {
   abline(a = 0,b=1)
 
 
+}
+
+
+plot_spqrx_pdf <- function(model, x0, n_grid = 1000) {
+
+  # Ensure single row
+  if (is.vector(x0)) {
+    x0 <- matrix(x0, nrow = 1)
+  }
+
+  # Extract normalization info
+  y_min <- model$normalizer$y_min
+  y_max <- model$normalizer$y_max
+
+  # Grid in normalized space (model space)
+  y_grid_norm <- seq(0, 1, length.out = n_grid)
+
+  # Repeat covariate row for each y
+  x_rep <- x0[rep(1, n_grid), , drop = FALSE]
+
+  # Get normalized PDF
+  pdf_norm <- predict_spqrx(
+    object = model,
+    x = x_rep,
+    y = y_grid_norm,
+    type = "PDF"
+  )
+
+  pdf_norm <- as.numeric(pdf_norm)
+
+  # ---- CRITICAL STEP ----
+  # Change of variables correction
+  scale_factor <- 1 / (y_max - y_min)
+
+  pdf_unnorm <- pdf_norm * scale_factor
+
+  # Convert grid back to original scale
+  y_grid <- y_grid_norm * (y_max - y_min) + y_min
+
+  plot(
+    y_grid,
+    pdf_unnorm,
+    type = "l",
+    lwd = 2,
+    xlab = "y",
+    ylab = "Density",
+    main = "Estimated PDF (Unnormalized Scale)"
+  )
+
+  invisible(list(y = y_grid, pdf = pdf_unnorm))
 }
 
 
