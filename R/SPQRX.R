@@ -486,6 +486,8 @@ predict_spqrx<- function(object, x, y = NULL , type = 'QF', tau = 0.5, normalize
       returnBack <- predict.spqrk(model = model, type = type, Y = y, knots = knots,
                                       I_basis = i_basis, covariates = x)
 
+      return (returnBack)
+
       }else if(type == 'PDF') {
 
 
@@ -552,97 +554,98 @@ predict_spqrx<- function(object, x, y = NULL , type = 'QF', tau = 0.5, normalize
 
       }
 
-    }
+    }else{
 
-  model.heavy <- model$model
-  p_a <- model$p_a
-  p_b <- model$p_b
-  c1 <- model$c1
-  c2 <- model$c2
-  knots <- model$knots
+      model.heavy <- model$model
+      p_a <- model$p_a
+      p_b <- model$p_b
+      c1 <- model$c1
+      c2 <- model$c2
+      print("Here before")
+      knots <- model$knots
 
-  y_max <- model$normalizer$y_max
-  y_min <- model$normalizer$y_min
-  n.knots <- (length(knots) + 3)
-
-
-  if (type == 'CDF') {
-
-    i_basis <- t(basis(y, n.knots, knots , integral = TRUE))
-    m_basis <- t(basis(y, n.knots, knots , integral = FALSE))
+      y_max <- model$normalizer$y_max
+      y_min <- model$normalizer$y_min
+      n.knots <- (length(knots) + 3)
 
 
+      if (type == 'CDF') {
 
-
-    returnBack <- predict.spqrk.GPD(model = model.heavy, type = type, Y = y, knots = knots,
-                                    I_basis = i_basis, M_basis = m_basis, covariates = x, p_a = p_a, p_b = p_b,  c1 = c1, c2 = c2)
-
-  }else if(type == 'PDF') {
-
-
-    i_basis <- t(basis(y, n.knots, knots , integral = TRUE))
-    m_basis <- t(basis(y, n.knots, knots , integral = FALSE))
-
-
-    returnBack <- predict.spqrk.GPD(model = model.heavy, type = type, Y=y, knots = knots,I_basis = i_basis,
-                                    M_basis = m_basis, covariates = x, p_a = p_a, p_b = p_b,  c1 = c1, c2 = c2)
-
-    return (returnBack)
-
-  }else if(type == 'QF'){
-
-    # Basis for quantile is not useful or used.
-
-
-    if (is.vector(tau) && is.atomic(tau)) {
-
-
-      i_basis <- matrix(0 , nrow = dim(x)[1], ncol = n.knots)
-      m_basis <- matrix(0 , nrow = dim(x)[1], ncol = n.knots)
-      returnBack = NULL
-      for (index in 1:length(tau)) {
+        i_basis <- t(basis(y, n.knots, knots , integral = TRUE))
+        m_basis <- t(basis(y, n.knots, knots , integral = FALSE))
 
 
 
-        temp_returnBack <- predict.spqrk.GPD(model = model.heavy, type = type, Y=NULL, knots = knots, I_basis = i_basis,
-                                        M_basis = m_basis, covariates = x, p_a = p_a, p_b = p_b,  c1 = c1, c2 = c2, tau = tau[index])
 
-        if(is.null(returnBack)) {
+        returnBack <- predict.spqrk.GPD(model = model.heavy, type = type, Y = y, knots = knots,
+                                        I_basis = i_basis, M_basis = m_basis, covariates = x, p_a = p_a, p_b = p_b,  c1 = c1, c2 = c2)
 
-          returnBack <- temp_returnBack
+      }else if(type == 'PDF') {
+
+
+        i_basis <- t(basis(y, n.knots, knots , integral = TRUE))
+        m_basis <- t(basis(y, n.knots, knots , integral = FALSE))
+
+
+        returnBack <- predict.spqrk.GPD(model = model.heavy, type = type, Y=y, knots = knots,I_basis = i_basis,
+                                        M_basis = m_basis, covariates = x, p_a = p_a, p_b = p_b,  c1 = c1, c2 = c2)
+
+        return (returnBack)
+
+      }else if(type == 'QF'){
+
+        # Basis for quantile is not useful or used.
+
+
+        if (is.vector(tau) && is.atomic(tau)) {
+
+
+          i_basis <- matrix(0 , nrow = dim(x)[1], ncol = n.knots)
+          m_basis <- matrix(0 , nrow = dim(x)[1], ncol = n.knots)
+          returnBack = NULL
+          for (index in 1:length(tau)) {
+
+
+
+            temp_returnBack <- predict.spqrk.GPD(model = model.heavy, type = type, Y=NULL, knots = knots, I_basis = i_basis,
+                                            M_basis = m_basis, covariates = x, p_a = p_a, p_b = p_b,  c1 = c1, c2 = c2, tau = tau[index])
+
+            if(is.null(returnBack)) {
+
+              returnBack <- temp_returnBack
+            }else {
+              returnBack <- cbind(returnBack, temp_returnBack)
+            }
+
+          }
+
+          colnames(returnBack) <- paste0((tau * 100) ," %")
+          if (normalize_output) {
+            returnBack <- (returnBack * (y_max - y_min)) + y_min
+            return (returnBack)
+          }else{
+            return (returnBack)
+          }
         }else {
-          returnBack <- cbind(returnBack, temp_returnBack)
+
+          i_basis <- matrix(0 , nrow = dim(x)[1], ncol = n.knots)
+          m_basis <- matrix(0 , nrow = dim(x)[1], ncol = n.knots)
+
+
+          returnBack <- predict.spqrk.GPD(model = model.heavy, type = type, Y=NULL, knots = knots, I_basis = i_basis,
+                                          M_basis = m_basis, covariates = x, p_a = p_a, p_b = p_b,  c1 = c1, c2 = c2, tau = tau)
+
+          if (normalize_output) {
+            returnBack <- (returnBack * (y_max - y_min)) + y_min
+            return (returnBack)
+          }else{
+            return (returnBack)
+          }
+
+
         }
 
-      }
-
-      colnames(returnBack) <- paste0((tau * 100) ," %")
-      if (normalize_output) {
-        returnBack <- (returnBack * (y_max - y_min)) + y_min
-        return (returnBack)
-      }else{
-        return (returnBack)
-      }
-    }else {
-
-      i_basis <- matrix(0 , nrow = dim(x)[1], ncol = n.knots)
-      m_basis <- matrix(0 , nrow = dim(x)[1], ncol = n.knots)
-
-
-      returnBack <- predict.spqrk.GPD(model = model.heavy, type = type, Y=NULL, knots = knots, I_basis = i_basis,
-                                      M_basis = m_basis, covariates = x, p_a = p_a, p_b = p_b,  c1 = c1, c2 = c2, tau = tau)
-
-      if (normalize_output) {
-        returnBack <- (returnBack * (y_max - y_min)) + y_min
-        return (returnBack)
-      }else{
-        return (returnBack)
-      }
-
-
     }
-
-
 
   }
 
