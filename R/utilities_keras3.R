@@ -681,6 +681,7 @@ predict.spqrk <- function(model,covariates,I_basis, knots, Y=NULL,nY=1001,tau=0.
   }
 }
 
+# Here one
 #' @export
 predict.spqrk.GPD <- function(model,
                               covariates,
@@ -695,6 +696,8 @@ predict.spqrk.GPD <- function(model,
                               c2 = 10,
                               p_a = 0.5,
                               p_b = 0.975) {
+
+
   tf <- get("tf", envir = asNamespace("SPQRX"))
 
   pred        <- as.matrix(model(list(
@@ -731,6 +734,17 @@ predict.spqrk.GPD <- function(model,
   }
 
 
+  #ab = predict.spqrk(
+  #  model = model,
+  #  type = 'QF',
+  #  Y = Y,
+  #  knots = knots,
+  #  covariates = covariates,
+  #  I_basis = I_basis,
+  #  tau = c(p_a, p_b)
+  #)
+
+  # Adding this change for lime reasons
   ab = predict.spqrk(
     model = model,
     type = 'QF',
@@ -740,6 +754,15 @@ predict.spqrk.GPD <- function(model,
     I_basis = I_basis,
     tau = c(p_a, p_b)
   )
+
+  # Force matrix structure
+  ab <- as.matrix(ab)
+
+  if (ncol(ab) != 2) {
+    ab <- matrix(ab, ncol = 2)
+  }
+
+
   if (type == "PDF" & length(ab) == 2) {
     ab = matrix(
       rep(c(ab), length = 2 * length(Y)),
@@ -843,6 +866,7 @@ predict.spqrk.GPD <- function(model,
                               c2 = 10,
                               p_a = 0.5,
                               p_b = 0.975) {
+
   tf <- get("tf", envir = asNamespace("SPQRX"))
 
   .pdf.function <- function(x, probs_row, M_basis_row) {
@@ -899,7 +923,17 @@ predict.spqrk.GPD <- function(model,
       return(quant)
   }
 
+  #ab = predict.spqrk(
+  #  model = model,
+  #  type = 'QF',
+  #  Y = Y,
+  #  knots = knots,
+  #  covariates = covariates,
+  #  I_basis = I_basis,
+  #  tau = c(p_a, p_b)
+  #)
 
+  # Adding this change for lime reasons
   ab = predict.spqrk(
     model = model,
     type = 'QF',
@@ -909,6 +943,15 @@ predict.spqrk.GPD <- function(model,
     I_basis = I_basis,
     tau = c(p_a, p_b)
   )
+
+  # Force matrix structure
+  ab <- as.matrix(ab)
+
+  if (ncol(ab) != 2) {
+    ab <- matrix(ab, ncol = 2)
+  }
+
+
   if (type == "PDF" & length(ab) == 2) {
     ab = matrix(
       rep(c(ab), length = 2 * length(Y)),

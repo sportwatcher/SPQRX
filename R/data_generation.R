@@ -18,7 +18,7 @@ scales.func = function(X){
 
 
 #' @export
-generate.simulation.dataset <- function(n = 1000, n.knots = 25)
+generate.simulation.extremes <- function(n = 1000, n.knots = 25)
 {
 
   tf <- get("tf", envir = asNamespace("SPQRX"))
@@ -115,3 +115,28 @@ generate.simulation.dataset <- function(n = 1000, n.knots = 25)
 
 
 }
+
+#' @export
+generate.simulation.conditionial <- function(n)
+{
+
+  set.seed(919)
+  n <- 5000
+  p <- 3
+  Sigma <- matrix(c(1,0.6,0.4,0.6,1,0.8,0.4,0.8,1),3,3)
+  Sigma
+  X_star = MASS::mvrnorm(n = 5000, rep(0, 3), Sigma)
+  cor(X_star)
+  X <- pnorm(X_star)
+  cor(X_star)
+  expit <- 1/(1+exp(-1+5*X[,1]*X[,2]))
+  Y <- rbeta(n,10*expit,10*(1-expit))
+
+  uniform_x_covariate <- matrix ( runif(n), ncol = 1)
+  X <- cbind(X, uniform_x_covariate)
+
+  data <- list(X = X, Y = Y)
+
+  return (data)
+}
+
